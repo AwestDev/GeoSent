@@ -373,4 +373,8 @@ public sealed partial class CoordinateLayerChoice(MapLayer layer, bool isSelecte
 }
 
 /// <summary>One choice of the live map display time (minutes; 0 = until cleared).</summary>
-public sealed record LiveMapDurationChoice(int Minutes, string Label);
+public sealed record LiveMapDurationChoice(int Minutes, string Label)
+{
+    /// <summary>Any control that falls back to ToString() shows the label, never the type name or its fields.</summary>
+    public override string ToString() => Label;
+}
