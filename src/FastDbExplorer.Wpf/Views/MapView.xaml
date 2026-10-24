@@ -115,6 +115,12 @@
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <!-- picture of the map as it is shown now (PNG), including an open point card -->
+          <Button Style="{StaticResource IconButton}" ToolTip="{x:Static l:MapUiStrings.Screenshot}" AutomationProperties.Name="{x:Static l:MapUiStrings.Screenshot}"
+                  Click="OnScreenshotClick" Visibility="{Binding HasMap, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Center" />
+          </Button>
+
           <!-- fit to map -->
           <Button Style="{StaticResource IconButton}" ToolTip="{x:Static l:Strings.FitToMap}" AutomationProperties.Name="{x:Static l:Strings.FitToMap}"
                   Command="{Binding FitCommand}" Visibility="{Binding HasMap, Converter={StaticResource BoolToVis}}">

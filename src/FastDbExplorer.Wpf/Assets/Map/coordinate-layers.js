@@ -79,6 +79,99 @@
     return tip;
   }
 
+  // The details of a point (an object, or its JSON text) as a small two-column list; null when there is nothing to show.
+  function detailList(details) {
+    if (typeof details === 'string') {
+      try { details = JSON.parse(details); } catch (_) { details = null; }
+    }
+    if (!details || typeof details !== 'object' || Array.isArray(details)) return null;
+    const entries = Object.entries(details).slice(0, 8);
+    if (!entries.length) return null;
+    const list = document.createElement('div');
+    list.className = 'coord-detail';
+    let remaining = 1200;
+    for (const [key, value] of entries) {
+      if (remaining <= 0) break;
+      const keyText = clipText(key, Math.min(80, remaining));
+      remaining -= keyText.length;
+      if (remaining <= 0) break;
+      const valueText = clipText(value, Math.min(240, remaining));
+      remaining -= valueText.length;
+      const k = document.createElement('span');
+      k.className = 'coord-key';
+      k.dir = 'auto';
+      k.textContent = keyText;
+      const v = document.createElement('span');
+      v.className = 'coord-value';
+      v.dir = 'auto';
+      v.textContent = valueText;
+      list.append(k, v);
+    }
+    return list.childElementCount ? list : null;
+  }
+
+  // ---- selected point card ------------------------------------------------------------------------------------------
+  // A clicked point shows its details here until its close button is pressed, another point is clicked, or the empty
+  // map is clicked. Unlike the hover tip it does not go away when the pointer leaves the map, so it stays open while the
+  // user presses a button of the program, and it is part of the page when the map is saved as a picture.
+  let card = null, cardBody = null;
+
+  function ensureCard() {
+    if (card) return card;
+    const style = document.createElement('style');
+    style.textContent =
+      '#coord-card .coord-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:2px 8px;margin-top:6px}' +
+      '#coord-card .coord-key{opacity:.68}#coord-card .coord-value{min-width:0;white-space:pre-wrap}';
+    document.head.appendChild(style);
+    card = document.createElement('div');
+    card.id = 'coord-card';
+    card.style.cssText = 'position:absolute;left:12px;bottom:12px;z-index:6;box-sizing:border-box;display:none;' +
+      'width:min(320px,calc(100% - 24px));max-height:50%;overflow:auto;overflow-wrap:anywhere;' +
+      'padding:10px 34px 10px 12px;border-radius:10px;font:12px/1.4 "Segoe UI",Tahoma,sans-serif;' +
+      'box-shadow:0 6px 20px rgba(0,0,0,.22);';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '\u00D7';
+    close.title = 'بستن';
+    close.style.cssText = 'position:absolute;top:4px;right:6px;border:0;background:transparent;color:inherit;' +
+      'font-size:18px;line-height:1;cursor:pointer;';
+    close.addEventListener('click', (e) => { e.stopPropagation(); clearSelection(true); });
+    cardBody = document.createElement('div');
+    card.append(close, cardBody);
+    document.body.appendChild(card);
+    return card;
+  }
+
+  function showCard(name, layerName, lat, lng, details) {
+    const c = ensureCard();
+    c.style.background = dark ? '#1F2540' : '#FFFFFF';
+    c.style.color = dark ? '#E8EBF5' : '#151B2C';
+    c.style.border = '1px solid ' + (dark ? '#2B3252' : '#E0E5EE');
+    cardBody.textContent = '';
+    const title = document.createElement('div');
+    title.dir = 'auto';
+    title.style.fontWeight = '600';
+    title.textContent = name;
+    cardBody.appendChild(title);
+    if (layerName) {
+      const layer = document.createElement('div');
+      layer.dir = 'auto';
+      layer.style.cssText = 'font-size:11px;opacity:.7';
+      layer.textContent = layerName;
+      cardBody.appendChild(layer);
+    }
+    const coords = document.createElement('div');
+    coords.dir = 'ltr';
+    coords.style.cssText = 'font-size:11px;opacity:.7';
+    coords.textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+    cardBody.appendChild(coords);
+    const list = detailList(details);
+    if (list) cardBody.appendChild(list);
+    c.style.display = 'block';
+  }
+
+  function hideCard() { if (card) card.style.display = 'none'; }
+
   function showTip(point, name, layerName, details) {
     const t = ensureTip();
     t.style.background = dark ? '#1F2540' : '#FFFFFF';
@@ -95,35 +188,8 @@
       s.textContent = layerName;
       t.appendChild(s);
     }
-    if (typeof details === 'string') {
-      try { details = JSON.parse(details); } catch (_) { details = null; }
-    }
-    if (details && typeof details === 'object' && !Array.isArray(details)) {
-      const entries = Object.entries(details).slice(0, 8);
-      if (entries.length) {
-        const list = document.createElement('div');
-        list.className = 'coord-detail';
-        let remaining = 1200;
-        for (const [key, value] of entries) {
-          if (remaining <= 0) break;
-          const keyText = clipText(key, Math.min(80, remaining));
-          remaining -= keyText.length;
-          if (remaining <= 0) break;
-          const valueText = clipText(value, Math.min(240, remaining));
-          remaining -= valueText.length;
-          const k = document.createElement('span');
-          k.className = 'coord-key';
-          k.dir = 'auto';
-          k.textContent = keyText;
-          const v = document.createElement('span');
-          v.className = 'coord-value';
-          v.dir = 'auto';
-          v.textContent = valueText;
-          list.append(k, v);
-        }
-        if (list.childElementCount) t.appendChild(list);
-      }
-    }
+    const detailsBox = detailList(details);
+    if (detailsBox) t.appendChild(detailsBox);
     t.style.display = 'block';
     const w = t.offsetWidth, h = t.offsetHeight;
     let x = point.x + 14, y = point.y + 14;
@@ -296,6 +362,8 @@
     selected = { layerId, pointId };
     const [lng, lat] = f.geometry.coordinates;
     drawSelection([lng, lat], l.shape);
+    if (l.kind === 'manual') hideCard();
+    else showCard(f.properties.name, l.name, lat, lng, f.properties.details);
     post({ type: 'pointSelect', selected: true, name: f.properties.name, layer: l.name, lat, lng });
     window.dispatchEvent(new CustomEvent('coordselect', {
       detail: { layerId, pointId, name: f.properties.name, layerName: l.name, kind: l.kind || 'excel', lat, lng }
@@ -303,6 +371,7 @@
   }
 
   function clearSelection(notify) {
+    hideCard();
     const had = selected !== null;
     selected = null;
     if (cmap && ready && cmap.getSource(SEL_SRC)) cmap.getSource(SEL_SRC).setData(empty());
@@ -315,7 +384,13 @@
     if (!selected || selected.layerId !== l.id) return;
     const f = findPoint(l.id, selected.pointId);
     if (!f || !l.visible) clearSelection(true);
-    else drawSelection(f.geometry.coordinates, l.shape);
+    else {
+      drawSelection(f.geometry.coordinates, l.shape);
+      if (l.kind !== 'manual') {
+        const [lng, lat] = f.geometry.coordinates;
+        showCard(f.properties.name, l.name, lat, lng, f.properties.details);
+      }
+    }
   }
 
   // ---- hover / click ----------------------------------------------------------------------------------------------
@@ -382,7 +457,7 @@
   window.coordAttach = function (map, isDark) {
     const hadState = selected !== null || hovered !== null;
     cmap = map; ready = false; dark = isDark;
-    selected = null; hovered = null; hideTip();
+    selected = null; hovered = null; hideTip(); hideCard();
     drawn.clear(); // a new map has none of our layers yet
     if (hadState) { post({ type: 'pointHover', name: null, layer: null }); post({ type: 'pointSelect', selected: false }); }
 

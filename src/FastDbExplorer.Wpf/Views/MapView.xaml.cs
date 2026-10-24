@@ -346,6 +346,34 @@ public partial class MapView : UserControl
             new MemoryStream(data ?? []), status, reason, headers);
     }
 
+    /// <summary>Saves the map as a PNG: the page as it is shown now, including an open point card.</summary>
+    private async void OnScreenshotClick(object sender, RoutedEventArgs e)
+    {
+        if (_released || _closing || Web.CoreWebView2 is not { } core) return;
+        try
+        {
+            using var image = new MemoryStream();
+            await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, image);
+
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = MapUiStrings.ScreenshotTitle,
+                Filter = "PNG (*.png)|*.png",
+                DefaultExt = ".png",
+                AddExtension = true,
+                FileName = $"map-{DateTime.Now:yyyyMMdd-HHmmss}.png"
+            };
+            if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
+
+            await File.WriteAllBytesAsync(dialog.FileName, image.ToArray());
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(MapUiStrings.ScreenshotFailed + "\n" + ex.Message, MapUiStrings.ScreenshotTitle,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         if (_viewModel is null || _closing) return;

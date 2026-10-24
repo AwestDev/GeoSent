@@ -39,7 +39,10 @@
         </StackPanel>
         <StackPanel Grid.Column="1" Margin="8,0,0,0">
           <TextBlock Text="{x:Static l:MonitoringStrings.Table}" Style="{StaticResource FieldLabel}" />
-          <ComboBox FlowDirection="LeftToRight" ItemsSource="{Binding Tables}" DisplayMemberPath="FullName" SelectedItem="{Binding SelectedTable}" />
+          <ComboBox FlowDirection="LeftToRight" ItemsSource="{Binding Tables}" SelectedItem="{Binding SelectedTable}">
+            <!-- Explicit template: the global ComboBox style ignores DisplayMemberPath in the selection box. -->
+            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding FullName}" /></DataTemplate></ComboBox.ItemTemplate>
+          </ComboBox>
         </StackPanel>
       </Grid>
       <StackPanel Margin="0,0,0,16" Visibility="{Binding IsExisting, Converter={StaticResource BoolToVis}}">
