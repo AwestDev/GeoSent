@@ -25,6 +25,23 @@ public partial class App : System.Windows.Application
     private IHost? _host;
     private ThemeService? _theme;
 
+    /// <summary>Appends an unhandled exception to %LocalAppData%\FastDbExplorer\logs\crash.log. Never throws.</summary>
+    internal static void WriteCrashLog(Exception exception)
+    {
+        try
+        {
+            var folder = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FastDbExplorer", "logs");
+            System.IO.Directory.CreateDirectory(folder);
+            System.IO.File.AppendAllText(System.IO.Path.Combine(folder, "crash.log"),
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {exception}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // Logging must never make the failure worse.
+        }
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -32,6 +49,7 @@ public partial class App : System.Windows.Application
 
         DispatcherUnhandledException += (_, args) =>
         {
+            WriteCrashLog(args.Exception);
             MessageBox.Show(args.Exception.Message, "FastDbExplorer", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };

@@ -231,9 +231,14 @@ public partial class MapView : UserControl
             return;
         }
 
-        // Wait (briefly) until the previous map WebView2 has been released; never longer than 5 s, so it cannot lock up.
-        _gateHeld = await WebGate.WaitAsync(TimeSpan.FromSeconds(5));
-        if (_released) return; // DisposeWebView (queued by ReleaseWebView) frees the gate
+        // Wait until the previous map WebView2 has been released. A second WebView2 on the same profile while the first is
+        // still closing is a crash risk, so the wait is repeated after each timeout instead of starting anyway.
+        while (!_gateHeld)
+        {
+            if (_released) return; // DisposeWebView (queued by ReleaseWebView) frees the gate
+            _gateHeld = await WebGate.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        if (_released) return;
 
         CoreWebView2Environment environment;
         try

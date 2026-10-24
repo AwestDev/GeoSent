@@ -69,6 +69,8 @@ public static class MapMarkerCatalog
             new("car", "M3 13 l2 -5 a2 2 0 0 1 1.9 -1.4 h10.2 a2 2 0 0 1 1.9 1.4 l2 5 v5 h-2 v2 h-3 v-2 H8 v2 H5 v-2 H3 z M7 9 l1.2 -1.9 h2.3 V9 z M12 9 V7.1 h3 l1.3 1.9 z"),
             new("fuel", "M4 3 h10 v18 H4 z M6.5 6 h5 v4.5 h-5 z M14 9 h2 l3 2 v7 a1.5 1.5 0 0 1 -3 0 v-6 h-2 z"),
             new("bridge", "M2 17 h20 v2 H2 z M4 17 C4 9 8 7 12 7 C16 7 20 9 20 17 h-2.5 C17.5 11.5 15.5 10 12 10 C8.5 10 6.5 11.5 6.5 17 z")
+            ,new("airport", "M9 6.5 h6 v3 H9 z M7.5 2.5 h9 v3 h-9 z M11 9.5 h2 v12 h-2 z M7.5 21.5 h9 v2 h-9 z"),
+            new("port", "M10 2 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 z M11 5 h2 v11 h4 v-1.5 h2 v3 c0 2.5 -3.5 4 -7 4 s-7 -1.5 -7 -4 v-3 h2 v1.5 h4 z")
         ]),
         new("government",
         [
@@ -77,6 +79,8 @@ public static class MapMarkerCatalog
             new("police", "M3 14 a9 9 0 0 1 18 0 z M2 16 h20 v2 H2 z M10.5 2 h3 v3 h-3 z"),
             new("fire", "M12 2 C12 2 18 7 18 13 a6 6 0 0 1 -12 0 c0 -2.2 1 -3.7 2.5 -5 c0.2 2 1.2 3 2.5 3.2 C14 9 12 5.5 12 2 z"),
             new("post", "M3 5 h18 v14 H3 z M5.5 6.5 h13 L12 12 z")
+            ,new("embassy", "M11.3 0.5 h1.4 v3.5 h-1.4 z M12.7 0.8 h6 l-1.4 1.7 l1.4 1.7 h-6 z M2 9 L12 3.5 L22 9 V10.5 H2 z M4 12 h2.6 v7 H4 z M10.7 12 h2.6 v7 h-2.6 z M17.4 12 h2.6 v7 h-2.6 z M2 20.5 h20 v2.5 H2 z"),
+            new("town_hall", "M12 1.5 L16.5 6 H7.5 z M8 6.5 h8 v14 H8 z M12 9 a2.6 2.6 0 1 0 0 5.2 a2.6 2.6 0 1 0 0 -5.2 z M10.8 15 h2.4 v5.5 h-2.4 z M4 20.5 h16 v2.5 H4 z")
         ]),
         new("security",
         [
@@ -86,6 +90,7 @@ public static class MapMarkerCatalog
             new("military", "M7 10 a5 5 0 0 1 10 0 z M5 10 h14 v4 H5 z M2 14 h19 v4 H2 z M17 8 h4.5 v1.4 H17 z"),
             new("radar", "M2 13 a10 10 0 0 1 20 0 z M11 13 h2 v7 h3 v2 H8 v-2 h3 z"),
             new("checkpoint", "M2 20 h20 v2 H2 z M3 6 h2 v14 H3 z M19 6 h2 v14 h-2 z M5 9 h14 v2 H5 z")
+            ,new("fort", "M2 8 h3 V5 h3 v3 h2 V5 h3 v3 h3 V5 h3 v3 h3 V5 h3 v3 H2 z M2 8 h20 v13 H2 z M10 14 h4 v7 h-4 z")
         ]),
         new("energy",
         [
@@ -94,6 +99,7 @@ public static class MapMarkerCatalog
             new("power_plant", "M2 21 L4.8 7.5 C6 5.5 8 5.5 9.2 7.5 L11.5 21 z M12.5 21 L15 8 C16 6 18 6 19 8 L21.5 21 z M1 21 h22 v2 H1 z"),
             new("nuclear", "M7.25 3.77 A9.5 9.5 0 0 1 16.75 3.77 L13.75 8.97 A3.5 3.5 0 0 0 10.25 8.97 z M21.5 12 A9.5 9.5 0 0 1 16.75 20.23 L13.75 15.03 A3.5 3.5 0 0 0 15.5 12 z M7.25 20.23 A9.5 9.5 0 0 1 2.5 12 L8.5 12 A3.5 3.5 0 0 0 10.25 15.03 z M14.2 12 a2.2 2.2 0 1 0 -4.4 0 a2.2 2.2 0 1 0 4.4 0 z"),
             new("solar", "M2 14.5 L13 8 L21 13.5 L10 20.5 z M11 20 h2 v3 h-2 z M7 23 h10 v1 H7 z")
+            ,new("wind_turbine", "M11 10.5 h2 v11.5 h-2 z M10.4 10 a1.6 1.6 0 1 0 3.2 0 a1.6 1.6 0 1 0 -3.2 0 z M11 9.4 L8.4 1.2 L10.3 0.9 L12.6 9.4 z M13.1 10.4 L21.6 8.3 L21.9 10.1 L13.5 11.6 z M10.6 11 L4.2 15.6 L5.2 17.1 L11.3 12.6 z")
         ]),
         new("nature",
         [

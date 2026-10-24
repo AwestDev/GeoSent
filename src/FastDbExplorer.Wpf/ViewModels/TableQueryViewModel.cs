@@ -118,12 +118,13 @@ public sealed partial class TableQueryViewModel : ObservableObject
 
     [ObservableProperty] private int _pageSize = 100;
     [ObservableProperty] private string? _orderColumn;
-    [ObservableProperty][NotifyCanExecuteChangedFor(nameof(ShowSelectedOnMapCommand))] private string? _latitudeColumn;
-    [ObservableProperty][NotifyCanExecuteChangedFor(nameof(ShowSelectedOnMapCommand))] private string? _longitudeColumn;
+    [ObservableProperty][NotifyCanExecuteChangedFor(nameof(ShowSelectedOnMapCommand))][NotifyCanExecuteChangedFor(nameof(ShowAllOnMapCommand))] private string? _latitudeColumn;
+    [ObservableProperty][NotifyCanExecuteChangedFor(nameof(ShowSelectedOnMapCommand))][NotifyCanExecuteChangedFor(nameof(ShowAllOnMapCommand))] private string? _longitudeColumn;
     [ObservableProperty] private string _keyDescription = "";
     [ObservableProperty] private string _errorMessage = "";
     [ObservableProperty] private string _pageInfo = "";
-    [ObservableProperty][NotifyCanExecuteChangedFor(nameof(ExportExcelCommand))] private bool _hasResult;
+    [ObservableProperty] private string _resultCountText = "";
+    [ObservableProperty][NotifyCanExecuteChangedFor(nameof(ExportExcelCommand))][NotifyCanExecuteChangedFor(nameof(ShowAllOnMapCommand))] private bool _hasResult;
     [ObservableProperty] private bool _isConfigVisible = true;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(NeedsOrderColumn))] private bool _usesPrimaryKey;
     [ObservableProperty][NotifyCanExecuteChangedFor(nameof(RunCommand))] private bool _isLoadingColumns;
@@ -134,6 +135,7 @@ public sealed partial class TableQueryViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(PreviousCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportExcelCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowSelectedOnMapCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowAllOnMapCommand))]
     private bool _isBusy;
 
     [ObservableProperty][NotifyCanExecuteChangedFor(nameof(NextCommand))] private bool _hasNext;
@@ -202,6 +204,7 @@ public sealed partial class TableQueryViewModel : ObservableObject
         _history.Clear();
         _current = first;
         Show(fetched.Value.Result, fetched.Value.Ms);
+        StartCount();
     }
 
     [RelayCommand(CanExecute = nameof(CanGoNext))]
@@ -261,6 +264,152 @@ public sealed partial class TableQueryViewModel : ObservableObject
             IsBusy = false;
             _running = null;
         }
+    }
+
+    private const int CountPageSize = 500;
+    private const int MaxAllMapPoints = 10_000;
+    private CancellationTokenSource? _countCts;
+
+    /// <summary>
+    /// Counts every row of the search in the background, page by page (no COUNT(*)), so the result line states the real total.
+    /// A new search cancels the count of the previous one; the grid never waits for it.
+    /// </summary>
+    private void StartCount()
+    {
+        _countCts?.Cancel();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _countCts = cts;
+        if (_base is null) return;
+        _ = CountRowsAsync(_base with { Columns = _displayColumns }, cts.Token);
+    }
+
+    private async Task CountRowsAsync(PageRequest request, CancellationToken ct)
+    {
+        ResultCountText = Strings.ResultCounting(0);
+        long total = 0;
+        long offset = 0;
+        object?[]? afterKey = null;
+        try
+        {
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var page = await _metadata.GetPageAsync(_settings,
+                    request with { PageSize = CountPageSize, Offset = offset, AfterKey = afterKey }, ct);
+                total += page.Rows.Count;
+                ResultCountText = page.HasMore ? Strings.ResultCounting(total) : Strings.ResultFound(total);
+                if (!page.HasMore) return;
+                offset += CountPageSize;
+                afterKey = request.UseKeyset && offset >= KeysetThreshold ? page.LastKey : null;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception) { ResultCountText = ""; } // the count is extra information: it never shows an error
+    }
+
+    private bool CanShowAllOnMap() => !IsBusy && HasResult && _base is not null
+        && LatitudeColumn is not null && LongitudeColumn is not null
+        && LatitudeColumn != LongitudeColumn;
+
+    /// <summary>
+    /// Sends every row of the search to the map (not only the rows of this page), up to <see cref="MaxAllMapPoints"/>.
+    /// Rows are streamed page by page; only the coordinates, the name and the chosen detail columns are read.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanShowAllOnMap))]
+    private async Task ShowAllOnMapAsync()
+    {
+        var latitudeColumn = LatitudeColumn;
+        var longitudeColumn = LongitudeColumn;
+        if (_base is null || latitudeColumn is null || longitudeColumn is null || latitudeColumn == longitudeColumn
+            || !CoordinateColumns.Contains(latitudeColumn) || !CoordinateColumns.Contains(longitudeColumn))
+        {
+            ErrorMessage = Strings.ErrPickCoordinateColumns;
+            return;
+        }
+
+        var nameColumn = _displayColumns.FirstOrDefault();
+        var detailColumns = MapDetailColumns.Where(item => item.IsSelected)
+            .Take(MaxMapDetailColumns).Select(item => item.Name).ToList();
+        var columns = new List<string> { latitudeColumn, longitudeColumn };
+        if (nameColumn is not null) columns.Add(nameColumn);
+        columns.AddRange(detailColumns);
+        columns = columns.Distinct(StringComparer.Ordinal).ToList();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _running = cts;
+        IsBusy = true;
+        ErrorMessage = "";
+        var points = new List<QueryMapPoint>();
+        var scanned = 0;
+        var skipped = 0;
+        var truncated = false;
+        try
+        {
+            await foreach (var values in ReadMapValuesAsync(_base with { Columns = columns }, cts.Token))
+            {
+                scanned++;
+                if (!TryBuildPoint(values, latitudeColumn, longitudeColumn, nameColumn, detailColumns, scanned, out var point))
+                {
+                    skipped++;
+                    continue;
+                }
+                if (points.Count == MaxAllMapPoints) { truncated = true; break; }
+                points.Add(point);
+                if (scanned % 1000 == 0) PageInfo = Strings.MapSendingProgress(scanned);
+            }
+
+            if (points.Count == 0) { ErrorMessage = Strings.ErrNoValidCoordinates; return; }
+            PageInfo = truncated ? Strings.MapSentLimited(points.Count) : Strings.MapSentAll(points.Count, skipped);
+            ShowSelectedRowsOnMapRequested?.Invoke(TableName, points);
+        }
+        catch (OperationCanceledException) { PageInfo = Strings.Cancelled; }
+        catch (Exception ex) { ErrorMessage = Strings.ErrSendingToMap + ex.Message; }
+        finally
+        {
+            IsBusy = false;
+            _running = null;
+        }
+    }
+
+    private async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> ReadMapValuesAsync(
+        PageRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        const int pageSize = 500;
+        long offset = 0;
+        object?[]? afterKey = null;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            var page = await _metadata.GetPageAsync(_settings,
+                request with { PageSize = pageSize, Offset = offset, AfterKey = afterKey }, ct);
+            foreach (var row in page.Rows)
+            {
+                ct.ThrowIfCancellationRequested();
+                yield return ToMapValues(page.Columns, row);
+            }
+            if (!page.HasMore) yield break;
+            offset += pageSize;
+            afterKey = request.UseKeyset && offset >= KeysetThreshold ? page.LastKey : null;
+        }
+    }
+
+    private bool TryBuildPoint(IReadOnlyDictionary<string, object?> values, string latitudeColumn, string longitudeColumn,
+        string? nameColumn, IReadOnlyList<string> detailColumns, int rowNumber, out QueryMapPoint point)
+    {
+        point = null!;
+        if (!values.TryGetValue(latitudeColumn, out var latitudeValue)
+            || !values.TryGetValue(longitudeColumn, out var longitudeValue)
+            || !TryCoordinate(latitudeValue, out var latitude)
+            || !TryCoordinate(longitudeValue, out var longitude)
+            || !CoordinateRules.IsValidLatitude(latitude) || !CoordinateRules.IsValidLongitude(longitude))
+            return false;
+
+        var name = nameColumn is not null && values.TryGetValue(nameColumn, out var nameValue)
+            ? CreateCell(nameValue).Display
+            : "";
+        if (string.IsNullOrWhiteSpace(name)) name = $"Row {rowNumber}";
+        point = new QueryMapPoint(TruncateMapText(name, 100), latitude, longitude, BuildMapDetails(values));
+        return true;
     }
 
     [RelayCommand(CanExecute = nameof(CanShowSelectedOnMap))]
@@ -391,13 +540,15 @@ public sealed partial class TableQueryViewModel : ObservableObject
         return result;
     }
 
-    private IReadOnlyDictionary<string, string>? BuildMapDetails(GridRow row)
+    private IReadOnlyDictionary<string, string>? BuildMapDetails(GridRow row) => BuildMapDetails(row.MapValues);
+
+    private IReadOnlyDictionary<string, string>? BuildMapDetails(IReadOnlyDictionary<string, object?> values)
     {
         var details = new Dictionary<string, string>(StringComparer.Ordinal);
         var totalLength = 0;
         foreach (var column in MapDetailColumns.Where(item => item.IsSelected).Take(MaxMapDetailColumns))
         {
-            if (!row.MapValues.TryGetValue(column.Name, out var rawValue)) continue;
+            if (!values.TryGetValue(column.Name, out var rawValue)) continue;
             var key = TruncateMapText(column.Name, 80);
             var remaining = MaxMapDetailTotalLength - totalLength - key.Length;
             if (remaining <= 0) break;

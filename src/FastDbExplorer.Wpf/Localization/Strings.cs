@@ -62,6 +62,15 @@ public static class Strings
     public const string NoResults = "نتیجه‌ای یافت نشد.";
     public const string ExportExcel = "خروجی Excel";
     public const string ExportCompleted = "خروجی Excel ذخیره شد: {0} ({1:N0} ردیف)";
+    public const string SendAllToMap = "ارسال همه‌ی نتایج به نقشه";
+    public const string ErrSendingToMap = "ارسال به نقشه انجام نشد: ";
+    public static string ResultCounting(long total) => $"در حال شمارش… {total:N0} تاکنون";
+    public static string ResultFound(long total) => $"{total:N0} رکورد یافت شد";
+    public static string MapSendingProgress(int scanned) => $"بررسی برای نقشه: {scanned:N0} رکورد";
+    public static string MapSentAll(int points, int skipped) =>
+        $"{points:N0} نقطه روی نقشه ارسال شد؛ {skipped:N0} رکورد بدون مختصات معتبر کنار گذاشته شد.";
+    public static string MapSentLimited(int points) =>
+        $"فقط {points:N0} نقطه (سقف ارسال) روی نقشه آمد. برای نتیجه‌ی کامل، جستجو را دقیق‌تر کنید.";
     public const string ExportFailed = "ساخت فایل Excel انجام نشد: ";
     public const string ShowSelectedOnMap = "نمایش ردیف‌های انتخاب‌شده روی نقشه";
     public const string MapTooltipColumns = "جزئیات نشانگر نقشه";
