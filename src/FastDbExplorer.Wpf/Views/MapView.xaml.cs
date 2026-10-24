@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using FastDbExplorer.Application.CoordinateLayers;
 using FastDbExplorer.Domain;
+using FastDbExplorer.Wpf.Localization;
 using FastDbExplorer.Wpf.Services;
 using FastDbExplorer.Wpf.ViewModels;
 using Microsoft.Web.WebView2.Core;
