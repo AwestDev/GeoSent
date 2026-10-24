@@ -57,6 +57,13 @@ public static class MonitoringStrings
     public const string OutputFolder = "پوشه‌ی ذخیره‌ی گزارش Excel";
     public const string Browse = "انتخاب پوشه…";
     public const string PlaySound = "پخش صدا هنگام هشدار";
+    public const string LiveMapTitle = "نمایش رکوردهای منطبق روی نقشه به‌صورت زنده";
+    public const string LiveMapHint = "هر رکورد منطبق که مختصات معتبر داشته باشد، بلافاصله روی نقشه در لایه‌ای با نام این مانیتور نشان داده می‌شود. رکوردهای بدون مختصات معتبر فقط در گزارش می‌آیند و روی نقشه نمی‌آیند.";
+    public const string CoordinateColumnsTitle = "ستون‌های مختصات جغرافیایی";
+    public const string ErrCoordinateColumns = "دو ستون جداگانه با مقادیر عددی برای عرض و طول جغرافیایی انتخاب کنید.";
+
+    /// <summary>Name of the map layer that shows one monitor's matching records.</summary>
+    public static string LiveLayerName(string monitorName) => $"پایش زنده: {monitorName}";
     public const string Save = "ذخیره";
     public const string PickFolderTitle = "انتخاب پوشه‌ی ذخیره‌ی گزارش";
 

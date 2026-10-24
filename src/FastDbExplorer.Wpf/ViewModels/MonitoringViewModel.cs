@@ -111,6 +111,12 @@ public sealed partial class MonitoringViewModel : ObservableObject, IDisposable
     public event Action? BackRequested;
     public event Action<string, IReadOnlyList<QueryMapPoint>>? ShowSelectedRowsOnMapRequested;
 
+    /// <summary>Matching records of a live-map monitor (monitor id, monitor name, points) for the map.</summary>
+    public event Action<Guid, string, IReadOnlyList<LiveMapPoint>>? LiveMapPointsRequested;
+
+    /// <summary>The monitor's live layer must leave the map (monitor deleted, disabled, or live map turned off).</summary>
+    public event Action<Guid>? LiveMapRemoveRequested;
+
     public ObservableCollection<MonitorItemViewModel> Monitors { get; } = [];
     public ObservableCollection<AlertItem> Alerts { get; } = [];
     public ObservableCollection<MonitoringMapDetailColumnItem> MapDetailColumns { get; } = [];
@@ -171,6 +177,7 @@ public sealed partial class MonitoringViewModel : ObservableObject, IDisposable
     private void DeleteMonitor(MonitorItemViewModel item)
     {
         Monitors.Remove(item);
+        LiveMapRemoveRequested?.Invoke(item.Definition.Id);
         RefreshSnapshot();
         _ = SaveAsync();
     }
@@ -179,6 +186,7 @@ public sealed partial class MonitoringViewModel : ObservableObject, IDisposable
     private void ToggleEnabled(MonitorItemViewModel item)
     {
         item.Definition = item.Definition with { Enabled = !item.Definition.Enabled };
+        if (!item.Definition.Enabled) LiveMapRemoveRequested?.Invoke(item.Definition.Id);
         RefreshSnapshot();
         _ = SaveAsync();
     }
@@ -316,6 +324,7 @@ public sealed partial class MonitoringViewModel : ObservableObject, IDisposable
             };
         }
 
+        if (!definition.LiveMapEnabled || !definition.Enabled) LiveMapRemoveRequested?.Invoke(definition.Id);
         RefreshSnapshot();
         CloseEditor();
         _ = SaveAsync();
@@ -369,6 +378,11 @@ public sealed partial class MonitoringViewModel : ObservableObject, IDisposable
                 result.ReportPath, previewResult, outcome.Monitor, result.Rows.Count, previewLimited));
             _notifier.Notify(MonitoringStrings.ToastTitle(item.Name), summary, result.ReportPath, item.Definition.PlaySound);
         }
+
+        // Only records found by a real check go to the map; the baseline run just records the starting point.
+        if (!result.IsBaseline && result.MapPoints is { Count: > 0 } livePoints
+            && item.Definition.LiveMapEnabled && item.Definition.Enabled)
+            LiveMapPointsRequested?.Invoke(item.Definition.Id, item.Name, livePoints);
 
         _ = SaveAsync();
     }

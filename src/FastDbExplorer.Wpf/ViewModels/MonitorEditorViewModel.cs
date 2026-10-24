@@ -43,6 +43,7 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
             _outputFolder = existing.OutputFolder;
             _playSound = existing.PlaySound;
             _useProximity = existing.HasProximityRule;
+            _useLiveMap = existing.LiveMapEnabled;
             _selectedLatitudeColumn = existing.LatitudeColumn;
             _selectedLongitudeColumn = existing.LongitudeColumn;
             _distanceText = existing.DistanceMeters?.ToString("R", CultureInfo.InvariantCulture) ?? "20000";
@@ -73,7 +74,14 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty] private string? _selectedLatitudeColumn;
     [ObservableProperty] private string? _selectedLongitudeColumn;
     [ObservableProperty] private bool _useProximity;
+    [ObservableProperty] private bool _useLiveMap;
     [ObservableProperty] private string _distanceText = "20000";
+
+    /// <summary>The coordinate columns are needed by both the proximity rule and the live map.</summary>
+    public bool ShowCoordinatePickers => UseProximity || UseLiveMap;
+
+    partial void OnUseProximityChanged(bool value) => OnPropertyChanged(nameof(ShowCoordinatePickers));
+    partial void OnUseLiveMapChanged(bool value) => OnPropertyChanged(nameof(ShowCoordinatePickers));
 
     [ObservableProperty][NotifyPropertyChangedFor(nameof(MatchAll))] private bool _useOr;
 
@@ -243,8 +251,10 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
 
         // The proximity rule stands on its own: a monitor may have conditions, a proximity rule, or both.
         // Only a monitor with neither would alert on every new row, so that combination is refused.
-        // The checkbox is the switch: unticking it removes the rule even if old layer ticks are still in the list.
+        // The checkboxes are the switches: unticking one removes its part even if old choices are still in the list.
         var proximityRequested = UseProximity;
+        var liveMapRequested = UseLiveMap;
+        var needsCoordinates = proximityRequested || liveMapRequested;
         var layerIds = proximityRequested
             ? CoordinateLayerChoices.Where(choice => choice.IsSelected).Select(choice => choice.Layer.Id).ToList()
             : [];
@@ -270,17 +280,23 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
         string? latitudeColumn = null;
         string? longitudeColumn = null;
         double? distanceMeters = null;
+        if (needsCoordinates)
+        {
+            if (SelectedLatitudeColumn is null || SelectedLongitudeColumn is null
+                || !CoordinateColumns.Contains(SelectedLatitudeColumn, StringComparer.Ordinal)
+                || !CoordinateColumns.Contains(SelectedLongitudeColumn, StringComparer.Ordinal)
+                || string.Equals(SelectedLatitudeColumn, SelectedLongitudeColumn, StringComparison.OrdinalIgnoreCase))
+            { ErrorMessage = MonitoringStrings.ErrCoordinateColumns; return; }
+            latitudeColumn = SelectedLatitudeColumn;
+            longitudeColumn = SelectedLongitudeColumn;
+        }
+
         if (proximityRequested)
         {
             if (layerIds.Count == 0)
             { ErrorMessage = MonitoringStrings.ErrNoProximityLayer; return; }
             if (CoordinateLayerChoices.Any(choice => choice.IsSelected && choice.Layer.Points.Count == 0))
             { ErrorMessage = MonitoringStrings.ErrEmptyProximityLayer; return; }
-            if (SelectedLatitudeColumn is null || SelectedLongitudeColumn is null
-                || !CoordinateColumns.Contains(SelectedLatitudeColumn, StringComparer.Ordinal)
-                || !CoordinateColumns.Contains(SelectedLongitudeColumn, StringComparer.Ordinal)
-                || string.Equals(SelectedLatitudeColumn, SelectedLongitudeColumn, StringComparison.OrdinalIgnoreCase))
-            { ErrorMessage = "دو ستون جداگانه با مقادیر قابل‌خواندنِ عددی برای عرض و طول جغرافیایی انتخاب کنید."; return; }
 
             var distanceText = DistanceText.Trim();
             if (distanceText.EndsWith('m') || distanceText.EndsWith('M'))
@@ -290,8 +306,6 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
             { ErrorMessage = $"فاصله باید عددی بزرگ‌تر از صفر و حداکثر {CoordinateRules.MaxRadiusMeters} متر باشد."; return; }
 
             coordinateLayerIds = layerIds;
-            latitudeColumn = SelectedLatitudeColumn;
-            longitudeColumn = SelectedLongitudeColumn;
             distanceMeters = parsedDistance;
         }
 
@@ -309,12 +323,13 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
                 conditions, logic, minutes, folder, sound, true,
                 CoordinateLayerId: coordinateLayerIds is { Count: 1 } ? coordinateLayerIds[0] : null,
                 LatitudeColumn: latitudeColumn, LongitudeColumn: longitudeColumn, DistanceMeters: distanceMeters,
-                CoordinateLayerIds: coordinateLayerIds)
+                CoordinateLayerIds: coordinateLayerIds, LiveMapEnabled: liveMapRequested)
             : _existing with { Name = name, Conditions = conditions, Logic = logic,
                                IntervalMinutes = minutes, OutputFolder = folder, PlaySound = sound,
                                CoordinateLayerId = coordinateLayerIds is { Count: 1 } ? coordinateLayerIds[0] : null,
                                LatitudeColumn = latitudeColumn, LongitudeColumn = longitudeColumn,
-                               DistanceMeters = distanceMeters, CoordinateLayerIds = coordinateLayerIds };
+                               DistanceMeters = distanceMeters, CoordinateLayerIds = coordinateLayerIds,
+                               LiveMapEnabled = liveMapRequested };
 
         Saved?.Invoke(definition);
     }

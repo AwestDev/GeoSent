@@ -135,6 +135,33 @@
         </StackPanel>
       </Border>
 
+      <!-- Live map: matching records with valid coordinates appear on the map as they are found. Off by default. -->
+      <Border Style="{StaticResource Card}" Padding="16" CornerRadius="14" Margin="0,0,0,18">
+        <StackPanel>
+          <CheckBox Content="{x:Static l:MonitoringStrings.LiveMapTitle}" IsChecked="{Binding UseLiveMap}" />
+          <TextBlock Text="{x:Static l:MonitoringStrings.LiveMapHint}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        </StackPanel>
+      </Border>
+
+      <!-- Coordinate columns: needed by the live map and by the proximity rule. -->
+      <Border Style="{StaticResource Card}" Padding="16" CornerRadius="14" Margin="0,0,0,18"
+              Visibility="{Binding ShowCoordinatePickers, Converter={StaticResource BoolToVis}}">
+        <StackPanel>
+          <TextBlock Text="{x:Static l:MonitoringStrings.CoordinateColumnsTitle}" FontWeight="SemiBold" Margin="0,0,0,12" />
+          <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,8,0">
+              <TextBlock Text="ستون عرض جغرافیایی (Latitude)" Style="{StaticResource FieldLabel}" />
+              <ComboBox FlowDirection="LeftToRight" ItemsSource="{Binding CoordinateColumns}" SelectedItem="{Binding SelectedLatitudeColumn}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+              <TextBlock Text="ستون طول جغرافیایی (Longitude)" Style="{StaticResource FieldLabel}" />
+              <ComboBox FlowDirection="LeftToRight" ItemsSource="{Binding CoordinateColumns}" SelectedItem="{Binding SelectedLongitudeColumn}" />
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+
       <!-- Optional client-side spatial rule; map visibility and drawing radius are intentionally unrelated. -->
       <Border Style="{StaticResource Card}" Padding="16" CornerRadius="14" Margin="0,0,0,18">
         <StackPanel>
@@ -170,17 +197,6 @@
                 </ItemsControl>
               </StackPanel>
             </Border>
-            <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-              <StackPanel Margin="0,0,8,0">
-                <TextBlock Text="ستون عرض جغرافیایی (Latitude)" Style="{StaticResource FieldLabel}" />
-                <ComboBox FlowDirection="LeftToRight" ItemsSource="{Binding CoordinateColumns}" SelectedItem="{Binding SelectedLatitudeColumn}" />
-              </StackPanel>
-              <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                <TextBlock Text="ستون طول جغرافیایی (Longitude)" Style="{StaticResource FieldLabel}" />
-                <ComboBox FlowDirection="LeftToRight" ItemsSource="{Binding CoordinateColumns}" SelectedItem="{Binding SelectedLongitudeColumn}" />
-              </StackPanel>
-            </Grid>
             <TextBlock Text="{x:Static l:MonitoringStrings.ProximityDistance}" Style="{StaticResource FieldLabel}" />
             <TextBox Width="160" HorizontalAlignment="Left" FlowDirection="LeftToRight"
                      Text="{Binding DistanceText, UpdateSourceTrigger=PropertyChanged}" />

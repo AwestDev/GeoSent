@@ -11,6 +11,11 @@ namespace FastDbExplorer.Infrastructure.Monitoring;
 /// explicit-column page before applying the report cap.
 /// The first check only records the starting point, so old data never floods the user with alerts.
 /// For date watermarks the newest <see cref="MonitorDefinition.SettleSeconds"/> are held back (see <see cref="SettleUpper"/>).
+///
+/// NULL and unusable coordinates: a record whose latitude or longitude is NULL, missing, not a number or out of range
+/// is never a proximity match (it cannot be near a layer), but it does not stop the check. When the live map option is
+/// on, such a record is still reported and only its map point is skipped (counted in
+/// <see cref="MonitorCheckResult.MapSkippedRows"/>). A database or configuration error still fails the check.
 /// </summary>
 public sealed class MonitorCheckService(
     IDatabaseMetadataService metadata, IWatermarkReader watermarks, IReportWriter reports, ICoordinateLayerStore coordinateLayers)
@@ -21,6 +26,9 @@ public sealed class MonitorCheckService(
     private const string NearestPointColumn = "Nearest point name";
     private const string CoordinateLayerColumn = "Coordinate layer";
     private const string DistanceColumn = "Distance (m)";
+    private const int MaxDetailColumns = 8;
+    private const int MaxDetailValueLength = 240;
+    private const int MaxNameLength = 256;
 
     public async Task<MonitorCheckResult> CheckAsync(ConnectionSettings settings, MonitorDefinition monitor, CancellationToken ct)
     {
@@ -35,14 +43,21 @@ public sealed class MonitorCheckService(
 
         // Only supported types are read (no blobs / xml), always by explicit name: never SELECT *.
         var selected = columns.Where(c => c.IsFilterable).Select(c => c.Name).ToList();
+
+        // The live map needs coordinates on the matching rows, and the same columns feed the proximity rule.
+        var liveMap = monitor.LiveMapEnabled && monitor.HasCoordinateColumns;
+        var needCoordinates = layers.Count > 0 || liveMap;
         var latitudeIndex = -1;
         var longitudeIndex = -1;
-        if (layers.Count > 0)
+        if (needCoordinates)
         {
             latitudeIndex = AddCoordinateColumn(monitor.LatitudeColumn!, columns, selected);
             longitudeIndex = AddCoordinateColumn(monitor.LongitudeColumn!, columns, selected);
         }
         if (selected.Count == 0) throw new ArgumentException("The table has no readable columns.");
+
+        // Identity of a record on the map: its primary key values; without a usable key, every selected value.
+        var keyIndexes = liveMap ? KeyIndexes(columns, selected) : [];
 
         var reading = await watermarks.ReadAsync(settings, monitor.Database, monitor.Schema, monitor.Table, watermark.Name, ct);
         var upper = SettleUpper(reading, watermark.TypeName, monitor.SettleSeconds);
@@ -68,6 +83,8 @@ public sealed class MonitorCheckService(
             .OrderBy(c => c.KeyOrdinal).Select(c => c.Name));
 
         var rows = new List<object?[]>();
+        var mapPoints = new List<LiveMapPoint>();
+        var mapSkipped = 0;
         var truncated = false;
         var stopPaging = false;
         var watermarkIndex = selected.IndexOf(watermark.Name);
@@ -104,15 +121,17 @@ public sealed class MonitorCheckService(
                         throw new InvalidOperationException($"Monitor '{monitor.Name}' received rows out of watermark order while checking a capped result.");
                 }
 
+                // Read once per row. A row without usable coordinates is simply not located; it never ends the check.
+                var located = needCoordinates
+                              && TryReadCoordinates(candidate, latitudeIndex, longitudeIndex, out var latitude, out var longitude);
+
                 object?[]? matched = null;
                 if (layers.Count == 0)
                 {
                     matched = candidate;
                 }
-                else
+                else if (located)
                 {
-                    var latitude = ReadCoordinate(candidate[latitudeIndex], monitor.LatitudeColumn!, "latitude", rowNumber, monitor.Name);
-                    var longitude = ReadCoordinate(candidate[longitudeIndex], monitor.LongitudeColumn!, "longitude", rowNumber, monitor.Name);
                     // The nearest point is taken across every selected layer, so one row matches once
                     // (a record close to two layers is reported with the closest of them).
                     var nearest = FindNearest(layers, latitude, longitude, ct);
@@ -133,6 +152,12 @@ public sealed class MonitorCheckService(
                 }
 
                 rows.Add(matched);
+                if (liveMap)
+                {
+                    if (located) mapPoints.Add(BuildLivePoint(candidate, selected, keyIndexes, latitude, longitude));
+                    else mapSkipped++;
+                }
+
                 if (rows.Count == MaxRows)
                 {
                     capReached = true;
@@ -152,7 +177,8 @@ public sealed class MonitorCheckService(
         if (rows.Count > 0)
             reportPath = await reports.WriteAsync(monitor.Name, checkedAt, reportColumns, rows, monitor.OutputFolder, ct);
 
-        return new MonitorCheckResult(monitor.Id, checkedAt, reportColumns, rows, truncated, next, reportPath, false);
+        return new MonitorCheckResult(monitor.Id, checkedAt, reportColumns, rows, truncated, next, reportPath, false,
+            liveMap ? mapPoints : null, mapSkipped);
     }
 
     /// <summary>
@@ -166,8 +192,7 @@ public sealed class MonitorCheckService(
         if (ids.Count == 0)
             throw new InvalidOperationException($"Monitor '{monitor.Name}' has a proximity rule without a saved coordinate layer. Reopen it and select at least one layer.");
 
-        if (string.IsNullOrWhiteSpace(monitor.LatitudeColumn) || string.IsNullOrWhiteSpace(monitor.LongitudeColumn)
-            || string.Equals(monitor.LatitudeColumn, monitor.LongitudeColumn, StringComparison.OrdinalIgnoreCase)
+        if (!monitor.HasCoordinateColumns
             || monitor.DistanceMeters is not { } distance || !double.IsFinite(distance) || distance <= 0
             || distance > CoordinateRules.MaxRadiusMeters)
             throw new InvalidOperationException($"Monitor '{monitor.Name}' has an incomplete or invalid proximity rule. Reopen it and select distinct numeric coordinate columns, and a distance greater than 0 and no greater than {CoordinateRules.MaxRadiusMeters} metres.");
@@ -188,6 +213,7 @@ public sealed class MonitorCheckService(
         return layers;
     }
 
+    /// <summary>A coordinate column that does not exist (or has a non-numeric type) is a configuration error and fails the check.</summary>
     private static int AddCoordinateColumn(string name, IReadOnlyList<ColumnInfo> columns, List<string> selected)
     {
         var column = columns.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -203,28 +229,68 @@ public sealed class MonitorCheckService(
         return index;
     }
 
-    private static double ReadCoordinate(object? value, string column, string coordinate, long rowNumber, string monitorName)
+    /// <summary>Positions (in <paramref name="selected"/>) of the primary key columns, or every column when the table has none.</summary>
+    private static int[] KeyIndexes(IReadOnlyList<ColumnInfo> columns, IReadOnlyList<string> selected)
     {
-        if (value is null or DBNull)
-            throw new InvalidOperationException($"Monitor '{monitorName}' found a missing {coordinate} in database column '{column}' at candidate row {rowNumber}.");
+        var keyNames = columns.Where(c => c.IsPrimaryKey).OrderBy(c => c.KeyOrdinal).Select(c => c.Name).ToList();
+        var indexes = keyNames
+            .Select(name => selected.IndexOf(name))
+            .Where(index => index >= 0)
+            .ToArray();
+        return indexes.Length > 0 ? indexes : Enumerable.Range(0, selected.Count).ToArray();
+    }
 
-        double parsed;
+    /// <summary>Reads both coordinates of a row. False (never an exception) when either one is NULL, unusable or out of range.</summary>
+    private static bool TryReadCoordinates(object?[] row, int latitudeIndex, int longitudeIndex, out double latitude, out double longitude) =>
+        TryParseCoordinate(row[latitudeIndex], isLatitude: true, out latitude)
+        && TryParseCoordinate(row[longitudeIndex], isLatitude: false, out longitude);
+
+    private static bool TryParseCoordinate(object? value, bool isLatitude, out double parsed)
+    {
+        parsed = 0;
+        if (value is null or DBNull) return false;
+
         try
         {
-            parsed = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            parsed = value is string text
+                ? double.Parse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture)
+                : Convert.ToDouble(value, CultureInfo.InvariantCulture);
         }
         catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
         {
-            throw new InvalidOperationException($"Monitor '{monitorName}' found a missing or invalid {coordinate} in database column '{column}' at candidate row {rowNumber}.", ex);
+            return false; // not a number: a data problem of this row, not of the check
         }
 
-        var valid = coordinate == "latitude"
-            ? CoordinateRules.IsValidLatitude(parsed)
-            : CoordinateRules.IsValidLongitude(parsed);
-        if (!valid)
-            throw new InvalidOperationException($"Monitor '{monitorName}' found a missing or out-of-range {coordinate} in database column '{column}' at candidate row {rowNumber}; expected finite WGS84 coordinates.");
-        return parsed;
+        return isLatitude ? CoordinateRules.IsValidLatitude(parsed) : CoordinateRules.IsValidLongitude(parsed);
     }
+
+    private static LiveMapPoint BuildLivePoint(object?[] row, IReadOnlyList<string> selected, int[] keyIndexes, double latitude, double longitude)
+    {
+        var key = string.Join('\u001f', keyIndexes.Select(index => FormatPart(row[index])));
+
+        var name = row.Select(value => value as string).FirstOrDefault(text => !string.IsNullOrWhiteSpace(text))?.Trim();
+        if (name is null) name = key;
+        if (name.Length > MaxNameLength) name = name[..MaxNameLength];
+
+        var details = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i < selected.Count && details.Count < MaxDetailColumns; i++)
+        {
+            var text = FormatPart(row[i]);
+            if (text.Length > MaxDetailValueLength) text = text[..MaxDetailValueLength];
+            details[selected[i]] = text;
+        }
+
+        return new LiveMapPoint(key, name, latitude, longitude, details);
+    }
+
+    private static string FormatPart(object? value) => value switch
+    {
+        null or DBNull => "NULL",
+        byte[] bytes => Convert.ToHexString(bytes),
+        DateTime date => WatermarkTypes.Format(date),
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? "",
+        _ => value.ToString() ?? ""
+    };
 
     private static (MapPoint Point, string LayerName, double DistanceMeters) FindNearest(
         IReadOnlyList<MapLayer> layers, double latitude, double longitude, CancellationToken ct)

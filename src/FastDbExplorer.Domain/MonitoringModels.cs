@@ -52,7 +52,8 @@ public sealed record MonitorDefinition(
     string? LatitudeColumn = null,
     string? LongitudeColumn = null,
     double? DistanceMeters = null,
-    IReadOnlyList<Guid>? CoordinateLayerIds = null)
+    IReadOnlyList<Guid>? CoordinateLayerIds = null,
+    bool LiveMapEnabled = false)
 {
     public const int MinIntervalMinutes = 1;
     public const int MaxIntervalMinutes = 1440;
@@ -63,11 +64,17 @@ public sealed record MonitorDefinition(
     /// <summary>
     /// The proximity rule is a rule on its own: it needs no <see cref="Conditions"/> at all. When both are present
     /// the check ANDs them (a new record must pass the conditions and be close to one of the layers).
+    /// The coordinate columns alone do NOT make a proximity rule: they are also used by the live map option.
     /// </summary>
     [JsonIgnore]
     public bool HasProximityRule => CoordinateLayerIds is { Count: > 0 } || CoordinateLayerId is not null
-                                    || LatitudeColumn is not null
-                                    || LongitudeColumn is not null || DistanceMeters is not null;
+                                    || DistanceMeters is not null;
+
+    /// <summary>True when the coordinate columns are set, so matching records can be shown on the map.</summary>
+    [JsonIgnore]
+    public bool HasCoordinateColumns =>
+        !string.IsNullOrWhiteSpace(LatitudeColumn) && !string.IsNullOrWhiteSpace(LongitudeColumn)
+        && !string.Equals(LatitudeColumn, LongitudeColumn, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Every selected layer, whichever way it was stored: <see cref="CoordinateLayerIds"/> is the current form,
@@ -148,4 +155,17 @@ public sealed record MonitorCheckResult(
     bool Truncated,
     string? NewWatermark,
     string? ReportPath,
-    bool IsBaseline);
+    bool IsBaseline,
+    IReadOnlyList<LiveMapPoint>? MapPoints = null,
+    int MapSkippedRows = 0);
+
+/// <summary>
+/// A matching record that can be shown on the live map. <see cref="Key"/> identifies the record across checks (its
+/// primary key values), so the same record is updated on the map instead of being added again.
+/// </summary>
+public sealed record LiveMapPoint(
+    string Key,
+    string Name,
+    double Latitude,
+    double Longitude,
+    IReadOnlyDictionary<string, string> Details);

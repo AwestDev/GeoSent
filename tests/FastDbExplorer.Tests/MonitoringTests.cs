@@ -410,17 +410,160 @@ public class MonitoringTests
     }
 
     [Fact]
-    public async Task Invalid_database_coordinate_fails_the_check_clearly()
+    public async Task Out_of_range_database_coordinate_is_not_a_match_and_does_not_fail_the_check()
     {
         var layer = TestLayer();
+        var reports = new FakeReports();
         var metadata = new FakeMetadata(CoordinateColumns(),
             new PageResult(["Id", "Place", "Lat", "Lon"], [[11, "A", 91d, 0d]], false, null));
-        var service = new MonitorCheckService(metadata, new FakeWatermark("12"), new FakeReports(), new FakeLayers(layer));
+        var service = new MonitorCheckService(metadata, new FakeWatermark("12"), reports, new FakeLayers(layer));
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.CheckAsync(Settings, ProximityMonitor(layer.Id), CancellationToken.None));
+        var result = await service.CheckAsync(Settings, ProximityMonitor(layer.Id), CancellationToken.None);
 
-        Assert.True(error.Message.Contains("out-of-range latitude", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(result.Rows);
+        Assert.Equal(0, reports.Calls);
+    }
+
+    private static MonitorDefinition LiveMonitor(bool enabled = true) =>
+        Monitor("10", DateTime.UtcNow.AddHours(-1)) with
+        {
+            LatitudeColumn = "Lat",
+            LongitudeColumn = "Lon",
+            LiveMapEnabled = enabled
+        };
+
+    private static MonitorCheckService LiveService(FakeMetadata metadata, FakeReports? reports = null) =>
+        new(metadata, new FakeWatermark("12"), reports ?? new FakeReports(), new FakeLayers());
+
+    private static FakeMetadata LiveRows(params object?[][] rows) =>
+        new(CoordinateColumns(), new PageResult(["Id", "Place", "Lat", "Lon"], rows, false, null));
+
+    [Fact]
+    public async Task Live_map_gives_a_point_for_a_matching_record_with_valid_coordinates()
+    {
+        var service = LiveService(LiveRows([11, "A", 35.7d, 51.4d]));
+
+        var result = await service.CheckAsync(Settings, LiveMonitor(), CancellationToken.None);
+
+        Assert.Single(result.Rows);
+        var point = Assert.Single(result.MapPoints!);
+        Assert.Equal("11", point.Key);
+        Assert.Equal("A", point.Name);
+        Assert.Equal(35.7d, point.Latitude);
+        Assert.Equal(51.4d, point.Longitude);
+        Assert.Equal(0, result.MapSkippedRows);
+    }
+
+    [Theory]
+    [InlineData(null, 51.4d)]
+    [InlineData(35.7d, null)]
+    [InlineData("abc", 51.4d)]
+    [InlineData(95.0d, 51.4d)]
+    [InlineData(35.7d, 181.0d)]
+    public async Task Unusable_coordinates_keep_the_record_in_the_report_but_not_on_the_map(object? latitude, object? longitude)
+    {
+        var reports = new FakeReports();
+        var service = LiveService(LiveRows([11, "A", latitude, longitude]), reports);
+
+        var result = await service.CheckAsync(Settings, LiveMonitor(), CancellationToken.None);
+
+        Assert.Single(result.Rows);
+        Assert.Empty(result.MapPoints!);
+        Assert.Equal(1, result.MapSkippedRows);
+        Assert.Equal(1, reports.Calls);
+    }
+
+    [Fact]
+    public async Task A_malformed_record_does_not_stop_the_next_valid_record()
+    {
+        var service = LiveService(LiveRows([11, "A", null, 51.4d], [12, "B", 35.7d, 51.4d]));
+
+        var result = await service.CheckAsync(Settings, LiveMonitor(), CancellationToken.None);
+
+        Assert.Equal(2, result.Rows.Count);
+        var point = Assert.Single(result.MapPoints!);
+        Assert.Equal("12", point.Key);
+        Assert.Equal(1, result.MapSkippedRows);
+    }
+
+    [Fact]
+    public async Task A_null_in_an_unrelated_column_does_not_stop_the_map_point()
+    {
+        var service = LiveService(LiveRows([11, null, 35.7d, 51.4d]));
+
+        var result = await service.CheckAsync(Settings, LiveMonitor(), CancellationToken.None);
+
+        var point = Assert.Single(result.MapPoints!);
+        Assert.Equal("11", point.Name); // no text value in the row: the key is the name
+    }
+
+    [Fact]
+    public async Task Live_map_disabled_reports_normally_and_adds_no_points()
+    {
+        var reports = new FakeReports();
+        var service = LiveService(LiveRows([11, "A", 35.7d, 51.4d]), reports);
+
+        var result = await service.CheckAsync(Settings, LiveMonitor(enabled: false), CancellationToken.None);
+
+        Assert.Single(result.Rows);
+        Assert.Null(result.MapPoints);
+        Assert.Equal(1, reports.Calls);
+    }
+
+    [Fact]
+    public async Task Checking_the_same_record_again_gives_the_same_key_so_the_map_point_is_updated_not_duplicated()
+    {
+        var service = LiveService(LiveRows([11, "A", 35.7d, 51.4d]));
+
+        var first = await service.CheckAsync(Settings, LiveMonitor(), CancellationToken.None);
+        var second = await service.CheckAsync(Settings, LiveMonitor(), CancellationToken.None);
+
+        Assert.Equal(first.MapPoints!.Single().Key, second.MapPoints!.Single().Key);
+    }
+
+    [Fact]
+    public void Coordinate_columns_alone_are_not_a_proximity_rule()
+    {
+        var monitor = LiveMonitor();
+
+        Assert.False(monitor.HasProximityRule);
+        Assert.True(monitor.HasCoordinateColumns);
+    }
+
+    [Fact]
+    public async Task A_missing_coordinate_column_in_the_table_still_fails_the_check()
+    {
+        var metadata = new FakeMetadata(
+            [new ColumnInfo("Id", "int", 1), new ColumnInfo("Place", "nvarchar", 0)],
+            new PageResult(["Id", "Place"], [[11, "A"]], false, null));
+        var service = LiveService(metadata);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.CheckAsync(Settings, LiveMonitor(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Live_map_flag_round_trips_and_defaults_to_disabled_for_old_files()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "fdbx-" + Guid.NewGuid().ToString("N"), "monitors.json");
+        try
+        {
+            var store = new JsonMonitorStore(path);
+            await store.SaveAsync([LiveMonitor(enabled: true)]);
+            Assert.True(Assert.Single(await store.LoadAsync()).LiveMapEnabled);
+
+            // An older file has no such field at all: it must load with the map option off.
+            var node = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+            node["Monitors"]![0]!.AsObject().Remove("LiveMapEnabled");
+            await File.WriteAllTextAsync(path, node.ToJsonString());
+
+            Assert.False(Assert.Single(await store.LoadAsync()).LiveMapEnabled);
+        }
+        finally
+        {
+            var dir = Path.GetDirectoryName(path)!;
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
     }
 
     private static IReadOnlyList<ColumnInfo> CoordinateColumns() =>
