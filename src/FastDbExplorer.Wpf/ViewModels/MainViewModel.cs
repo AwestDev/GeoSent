@@ -203,8 +203,8 @@ public sealed partial class MainViewModel : ObservableObject
             Navigate(AppSection.Map);
         };
         // Live map: matching records update one layer per monitor on the map; the user stays on the monitoring page.
-        monitoring.LiveMapPointsRequested += (monitorId, monitorName, points) =>
-            _map.UpsertLiveMonitorPoints(monitorId, monitorName, points);
+        monitoring.LiveMapPointsRequested += (monitorId, monitorName, minutes, points) =>
+            _map.UpsertLiveMonitorPoints(monitorId, monitorName, minutes, points);
         monitoring.LiveMapRemoveRequested += monitorId => _map.RemoveLiveMonitorLayer(monitorId);
         _monitoring = monitoring;
 

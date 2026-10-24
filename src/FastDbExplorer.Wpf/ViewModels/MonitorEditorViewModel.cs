@@ -44,6 +44,8 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
             _playSound = existing.PlaySound;
             _useProximity = existing.HasProximityRule;
             _useLiveMap = existing.LiveMapEnabled;
+            _liveMapMinutes = LiveResultLifetime.Normalize(existing.LiveMapMinutes);
+            _liveMapShowAll = existing.LiveMapShowAllMatches;
             _selectedLatitudeColumn = existing.LatitudeColumn;
             _selectedLongitudeColumn = existing.LongitudeColumn;
             _distanceText = existing.DistanceMeters?.ToString("R", CultureInfo.InvariantCulture) ?? "20000";
@@ -75,13 +77,29 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty] private string? _selectedLongitudeColumn;
     [ObservableProperty] private bool _useProximity;
     [ObservableProperty] private bool _useLiveMap;
+    [ObservableProperty] private int _liveMapMinutes = LiveResultLifetime.DefaultMinutes;
+    [ObservableProperty] private bool _liveMapShowAll;
+
+    public IReadOnlyList<LiveMapDurationChoice> LiveMapDurations { get; } =
+        LiveResultLifetime.Choices.Select(m => new LiveMapDurationChoice(m, MonitoringStrings.LiveMapDurationLabel(m))).ToList();
+
+    /// <summary>The "show all matches" option only means something when a radius filters the map.</summary>
+    public bool ShowLiveMapShowAll => UseProximity && UseLiveMap;
     [ObservableProperty] private string _distanceText = "20000";
 
     /// <summary>The coordinate columns are needed by both the proximity rule and the live map.</summary>
     public bool ShowCoordinatePickers => UseProximity || UseLiveMap;
 
-    partial void OnUseProximityChanged(bool value) => OnPropertyChanged(nameof(ShowCoordinatePickers));
-    partial void OnUseLiveMapChanged(bool value) => OnPropertyChanged(nameof(ShowCoordinatePickers));
+    partial void OnUseProximityChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowCoordinatePickers));
+        OnPropertyChanged(nameof(ShowLiveMapShowAll));
+    }
+    partial void OnUseLiveMapChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowCoordinatePickers));
+        OnPropertyChanged(nameof(ShowLiveMapShowAll));
+    }
 
     [ObservableProperty][NotifyPropertyChangedFor(nameof(MatchAll))] private bool _useOr;
 
@@ -255,6 +273,7 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
         var proximityRequested = UseProximity;
         var liveMapRequested = UseLiveMap;
         var needsCoordinates = proximityRequested || liveMapRequested;
+        var liveMapShowAll = liveMapRequested && proximityRequested && LiveMapShowAll;
         var layerIds = proximityRequested
             ? CoordinateLayerChoices.Where(choice => choice.IsSelected).Select(choice => choice.Layer.Id).ToList()
             : [];
@@ -323,13 +342,16 @@ public sealed partial class MonitorEditorViewModel : ObservableObject, IDisposab
                 conditions, logic, minutes, folder, sound, true,
                 CoordinateLayerId: coordinateLayerIds is { Count: 1 } ? coordinateLayerIds[0] : null,
                 LatitudeColumn: latitudeColumn, LongitudeColumn: longitudeColumn, DistanceMeters: distanceMeters,
-                CoordinateLayerIds: coordinateLayerIds, LiveMapEnabled: liveMapRequested)
+                CoordinateLayerIds: coordinateLayerIds, LiveMapEnabled: liveMapRequested,
+                LiveMapMinutes: LiveResultLifetime.Normalize(LiveMapMinutes), LiveMapShowAllMatches: liveMapShowAll)
             : _existing with { Name = name, Conditions = conditions, Logic = logic,
                                IntervalMinutes = minutes, OutputFolder = folder, PlaySound = sound,
                                CoordinateLayerId = coordinateLayerIds is { Count: 1 } ? coordinateLayerIds[0] : null,
                                LatitudeColumn = latitudeColumn, LongitudeColumn = longitudeColumn,
                                DistanceMeters = distanceMeters, CoordinateLayerIds = coordinateLayerIds,
-                               LiveMapEnabled = liveMapRequested };
+                               LiveMapEnabled = liveMapRequested,
+                               LiveMapMinutes = LiveResultLifetime.Normalize(LiveMapMinutes),
+                               LiveMapShowAllMatches = liveMapShowAll };
 
         Saved?.Invoke(definition);
     }
@@ -349,3 +371,6 @@ public sealed partial class CoordinateLayerChoice(MapLayer layer, bool isSelecte
 
     [ObservableProperty] private bool _isSelected = isSelected;
 }
+
+/// <summary>One choice of the live map display time (minutes; 0 = until cleared).</summary>
+public sealed record LiveMapDurationChoice(int Minutes, string Label);

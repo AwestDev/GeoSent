@@ -46,6 +46,8 @@ public sealed class MonitorCheckService(
 
         // The live map needs coordinates on the matching rows, and the same columns feed the proximity rule.
         var liveMap = monitor.LiveMapEnabled && monitor.HasCoordinateColumns;
+        // Display-only: with a radius, the map may also show records that conditions match but the radius excludes.
+        var liveAll = liveMap && monitor.LiveMapShowAllMatches && layers.Count > 0;
         var needCoordinates = layers.Count > 0 || liveMap;
         var latitudeIndex = -1;
         var longitudeIndex = -1;
@@ -122,8 +124,10 @@ public sealed class MonitorCheckService(
                 }
 
                 // Read once per row. A row without usable coordinates is simply not located; it never ends the check.
+                // Declared before the call: out variables inside '&&' are not definitely assigned for the code below.
+                double latitude = 0, longitude = 0;
                 var located = needCoordinates
-                              && TryReadCoordinates(candidate, latitudeIndex, longitudeIndex, out var latitude, out var longitude);
+                              && TryReadCoordinates(candidate, latitudeIndex, longitudeIndex, out latitude, out longitude);
 
                 object?[]? matched = null;
                 if (layers.Count == 0)
@@ -145,7 +149,13 @@ public sealed class MonitorCheckService(
                     }
                 }
 
-                if (matched is null) continue;
+                if (matched is null)
+                {
+                    // Not a report row. It may still be a map point when the user asked for all matching records.
+                    if (liveAll && located)
+                        mapPoints.Add(BuildLivePoint(candidate, selected, keyIndexes, latitude, longitude));
+                    continue;
+                }
                 if (capReached)
                 {
                     throw new InvalidOperationException($"Monitor '{monitor.Name}' matched more than {MaxRows:N0} rows with the same watermark value. It cannot safely resume without skipping records; choose a watermark column with fewer ties or split the monitor conditions.");

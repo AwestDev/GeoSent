@@ -53,7 +53,9 @@ public sealed record MonitorDefinition(
     string? LongitudeColumn = null,
     double? DistanceMeters = null,
     IReadOnlyList<Guid>? CoordinateLayerIds = null,
-    bool LiveMapEnabled = false)
+    bool LiveMapEnabled = false,
+    int LiveMapMinutes = LiveResultLifetime.DefaultMinutes,
+    bool LiveMapShowAllMatches = false)
 {
     public const int MinIntervalMinutes = 1;
     public const int MaxIntervalMinutes = 1440;
@@ -169,3 +171,22 @@ public sealed record LiveMapPoint(
     double Latitude,
     double Longitude,
     IReadOnlyDictionary<string, string> Details);
+
+/// <summary>
+/// How long a live map result stays visible. Timestamp rule: a result is shown from the check that found it; every later
+/// check that finds the same record (same key) starts its time again. <see cref="UntilCleared"/> never expires.
+/// </summary>
+public static class LiveResultLifetime
+{
+    public const int UntilCleared = 0;
+    public const int DefaultMinutes = 30;
+
+    /// <summary>The choices offered by the editor (minutes; 0 = until cleared by the user).</summary>
+    public static readonly IReadOnlyList<int> Choices = [5, 15, 30, 60, UntilCleared];
+
+    /// <summary>Unknown values (for example from a hand-edited file) fall back to the default.</summary>
+    public static int Normalize(int minutes) => Choices.Contains(minutes) ? minutes : DefaultMinutes;
+
+    public static bool IsExpired(DateTime lastSeenUtc, DateTime nowUtc, int minutes) =>
+        minutes != UntilCleared && nowUtc - lastSeenUtc >= TimeSpan.FromMinutes(Normalize(minutes));
+}

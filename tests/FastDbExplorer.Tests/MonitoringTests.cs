@@ -424,6 +424,63 @@ public class MonitoringTests
         Assert.Equal(0, reports.Calls);
     }
 
+    [Fact]
+    public async Task Show_all_puts_a_record_outside_the_radius_on_the_map_but_not_in_the_report()
+    {
+        var layer = TestLayer();
+        var reports = new FakeReports();
+        var metadata = new FakeMetadata(CoordinateColumns(),
+            new PageResult(["Id", "Place", "Lat", "Lon"], [[11, "Far", 50d, 0d]], false, null));
+        var monitor = ProximityMonitor(layer.Id) with { LiveMapEnabled = true, LiveMapShowAllMatches = true };
+        var service = new MonitorCheckService(metadata, new FakeWatermark("12"), reports, new FakeLayers(layer));
+
+        var result = await service.CheckAsync(Settings, monitor, CancellationToken.None);
+
+        Assert.Empty(result.Rows);
+        Assert.Equal(0, reports.Calls);
+        Assert.Single(result.MapPoints!);
+        Assert.Equal(50d, result.MapPoints![0].Latitude);
+    }
+
+    [Fact]
+    public async Task Without_show_all_a_record_outside_the_radius_is_not_on_the_map()
+    {
+        var layer = TestLayer();
+        var metadata = new FakeMetadata(CoordinateColumns(),
+            new PageResult(["Id", "Place", "Lat", "Lon"], [[11, "Far", 50d, 0d]], false, null));
+        var monitor = ProximityMonitor(layer.Id) with { LiveMapEnabled = true };
+        var service = new MonitorCheckService(metadata, new FakeWatermark("12"), new FakeReports(), new FakeLayers(layer));
+
+        var result = await service.CheckAsync(Settings, monitor, CancellationToken.None);
+
+        Assert.Empty(result.Rows);
+        Assert.Empty(result.MapPoints!);
+    }
+
+    [Theory]
+    [InlineData(5, 4, false)]
+    [InlineData(5, 5, true)]
+    [InlineData(30, 29, false)]
+    [InlineData(30, 31, true)]
+    [InlineData(0, 100_000, false)]
+    public void Live_results_expire_after_their_display_time_and_never_when_until_cleared(int minutes, int ageMinutes, bool expired)
+    {
+        var seen = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+
+        Assert.Equal(expired, LiveResultLifetime.IsExpired(seen, seen.AddMinutes(ageMinutes), minutes));
+    }
+
+    [Fact]
+    public void Unknown_live_display_time_falls_back_to_the_default_and_new_monitors_default_to_off_and_inside_radius()
+    {
+        Assert.Equal(LiveResultLifetime.DefaultMinutes, LiveResultLifetime.Normalize(7));
+        Assert.Equal(LiveResultLifetime.UntilCleared, LiveResultLifetime.Normalize(0));
+
+        var monitor = Monitor();
+        Assert.Equal(LiveResultLifetime.DefaultMinutes, monitor.LiveMapMinutes);
+        Assert.False(monitor.LiveMapShowAllMatches);
+    }
+
     private static MonitorDefinition LiveMonitor(bool enabled = true) =>
         Monitor("10", DateTime.UtcNow.AddHours(-1)) with
         {

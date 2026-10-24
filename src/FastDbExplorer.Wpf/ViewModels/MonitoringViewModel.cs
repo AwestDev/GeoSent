@@ -111,8 +111,8 @@ public sealed partial class MonitoringViewModel : ObservableObject, IDisposable
     public event Action? BackRequested;
     public event Action<string, IReadOnlyList<QueryMapPoint>>? ShowSelectedRowsOnMapRequested;
 
-    /// <summary>Matching records of a live-map monitor (monitor id, monitor name, points) for the map.</summary>
-    public event Action<Guid, string, IReadOnlyList<LiveMapPoint>>? LiveMapPointsRequested;
+    /// <summary>Matching records of a live-map monitor (monitor id, monitor name, display minutes, points) for the map.</summary>
+    public event Action<Guid, string, int, IReadOnlyList<LiveMapPoint>>? LiveMapPointsRequested;
 
     /// <summary>The monitor's live layer must leave the map (monitor deleted, disabled, or live map turned off).</summary>
     public event Action<Guid>? LiveMapRemoveRequested;
@@ -382,7 +382,7 @@ public sealed partial class MonitoringViewModel : ObservableObject, IDisposable
         // Only records found by a real check go to the map; the baseline run just records the starting point.
         if (!result.IsBaseline && result.MapPoints is { Count: > 0 } livePoints
             && item.Definition.LiveMapEnabled && item.Definition.Enabled)
-            LiveMapPointsRequested?.Invoke(item.Definition.Id, item.Name, livePoints);
+            LiveMapPointsRequested?.Invoke(item.Definition.Id, item.Name, item.Definition.LiveMapMinutes, livePoints);
 
         _ = SaveAsync();
     }

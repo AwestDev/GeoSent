@@ -140,6 +140,15 @@
         <StackPanel>
           <CheckBox Content="{x:Static l:MonitoringStrings.LiveMapTitle}" IsChecked="{Binding UseLiveMap}" />
           <TextBlock Text="{x:Static l:MonitoringStrings.LiveMapHint}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0" />
+          <StackPanel Margin="0,12,0,0" Visibility="{Binding UseLiveMap, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="{x:Static l:MonitoringStrings.LiveMapDurationTitle}" Style="{StaticResource FieldLabel}" />
+            <ComboBox ItemsSource="{Binding LiveMapDurations}" DisplayMemberPath="Label" SelectedValuePath="Minutes" SelectedValue="{Binding LiveMapMinutes}" />
+            <TextBlock Text="{x:Static l:MonitoringStrings.LiveMapDurationHint}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0" />
+            <CheckBox Margin="0,12,0,0" Content="{x:Static l:MonitoringStrings.LiveMapShowAllTitle}" IsChecked="{Binding LiveMapShowAll}"
+                      Visibility="{Binding ShowLiveMapShowAll, Converter={StaticResource BoolToVis}}" />
+            <TextBlock Text="{x:Static l:MonitoringStrings.LiveMapShowAllHint}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Visibility="{Binding ShowLiveMapShowAll, Converter={StaticResource BoolToVis}}" />
+          </StackPanel>
         </StackPanel>
       </Border>
 

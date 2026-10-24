@@ -355,6 +355,7 @@ public sealed partial class MapViewModel : ObservableObject
     public void RemoveQueryResult(Guid layerId)
     {
         _liveMonitors.Remove(layerId); // a live monitor layer forgets its points with the layer
+        StopExpiryTimerIfIdle();
         var set = _queryResults.FirstOrDefault(s => s.Layer.Id == layerId);
         if (set is null) return;
         _queryResults.Remove(set);

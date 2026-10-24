@@ -1,4 +1,5 @@
 using System.Globalization;
+using FastDbExplorer.Domain;
 
 namespace FastDbExplorer.Wpf.Localization;
 
@@ -61,6 +62,17 @@ public static class MonitoringStrings
     public const string LiveMapHint = "هر رکورد منطبق که مختصات معتبر داشته باشد، بلافاصله روی نقشه در لایه‌ای با نام این مانیتور نشان داده می‌شود. رکوردهای بدون مختصات معتبر فقط در گزارش می‌آیند و روی نقشه نمی‌آیند.";
     public const string CoordinateColumnsTitle = "ستون‌های مختصات جغرافیایی";
     public const string ErrCoordinateColumns = "دو ستون جداگانه با مقادیر عددی برای عرض و طول جغرافیایی انتخاب کنید.";
+    public const string LiveMapDurationTitle = "مدت نمایش نتایج روی نقشه";
+    public const string LiveMapDurationHint = "هر نتیجه از زمان آخرین پیدا شدنش روی نقشه می‌ماند. اگر همان رکورد در بررسی بعدی دوباره پیدا شود، زمانش از نو شروع می‌شود. حذف از نقشه، رکورد دیتابیس و فایل اکسل را تغییر نمی‌دهد.";
+    public const string LiveMapShowAllTitle = "روی نقشه همه رکوردهای منطبق با شرط‌ها را نشان بده، حتی خارج از شعاع";
+    public const string LiveMapShowAllHint = "فقط نقشه تغییر می‌کند: رکوردهای خارج از شعاع در گزارش نمی‌آیند ولی روی نقشه دیده می‌شوند.";
+
+    public static string LiveMapDurationLabel(int minutes) => minutes switch
+    {
+        LiveResultLifetime.UntilCleared => "تا پاک‌کردن دستی",
+        60 => "۱ ساعت",
+        _ => $"{minutes} دقیقه"
+    };
 
     /// <summary>Name of the map layer that shows one monitor's matching records.</summary>
     public static string LiveLayerName(string monitorName) => $"پایش زنده: {monitorName}";
