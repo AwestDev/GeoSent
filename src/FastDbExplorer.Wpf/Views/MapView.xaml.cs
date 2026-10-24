@@ -346,22 +346,40 @@ public partial class MapView : UserControl
             new MemoryStream(data ?? []), status, reason, headers);
     }
 
-    /// <summary>Saves the map as a PNG: the page as it is shown now, including an open point card.</summary>
-    private async void OnScreenshotClick(object sender, RoutedEventArgs e)
+    /// <summary>Opens the format menu under the camera button (PNG or JPG).</summary>
+    private void OnScreenshotMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: { } menu } button) return;
+        menu.PlacementTarget = button;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    private async void OnScreenshotPngClick(object sender, RoutedEventArgs e) =>
+        await SaveScreenshotAsync(CoreWebView2CapturePreviewImageFormat.Png, "png");
+
+    private async void OnScreenshotJpgClick(object sender, RoutedEventArgs e) =>
+        await SaveScreenshotAsync(CoreWebView2CapturePreviewImageFormat.Jpeg, "jpg");
+
+    /// <summary>
+    /// Saves the map as it is shown now, including an open point card. The picture is taken before the save dialog
+    /// opens, so the dialog is never part of it.
+    /// </summary>
+    private async Task SaveScreenshotAsync(CoreWebView2CapturePreviewImageFormat format, string extension)
     {
         if (_released || _closing || Web.CoreWebView2 is not { } core) return;
         try
         {
             using var image = new MemoryStream();
-            await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, image);
+            await core.CapturePreviewAsync(format, image);
 
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
                 Title = MapUiStrings.ScreenshotTitle,
-                Filter = "PNG (*.png)|*.png",
-                DefaultExt = ".png",
+                Filter = extension == "png" ? "PNG (*.png)|*.png" : "JPEG (*.jpg)|*.jpg",
+                DefaultExt = "." + extension,
                 AddExtension = true,
-                FileName = $"map-{DateTime.Now:yyyyMMdd-HHmmss}.png"
+                FileName = $"map-{DateTime.Now:yyyyMMdd-HHmmss}.{extension}"
             };
             if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
 

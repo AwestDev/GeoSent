@@ -16,7 +16,9 @@ public static class MapUiStrings
     public const string ColorLabel = "رنگ";
     public const string DefaultMarker = "پیش‌فرض (نقطه ساده)";
 
-    public const string Screenshot = "گرفتن تصویر از نقشه (PNG)";
+    public const string Screenshot = "گرفتن تصویر از نقشه";
+    public const string ScreenshotPng = "PNG — کیفیت کامل (مناسب متن و برچسب‌ها)";
+    public const string ScreenshotJpg = "JPG — حجم کمتر (مناسب ارسال)";
     public const string ScreenshotTitle = "ذخیرهٔ تصویر نقشه";
     public const string ScreenshotFailed = "گرفتن تصویر از نقشه انجام نشد.";
 
