@@ -240,7 +240,7 @@ public sealed class MonitorCheckService(
     }
 
     /// <summary>Positions (in <paramref name="selected"/>) of the primary key columns, or every column when the table has none.</summary>
-    private static int[] KeyIndexes(IReadOnlyList<ColumnInfo> columns, IReadOnlyList<string> selected)
+    private static int[] KeyIndexes(IReadOnlyList<ColumnInfo> columns, List<string> selected)
     {
         var keyNames = columns.Where(c => c.IsPrimaryKey).OrderBy(c => c.KeyOrdinal).Select(c => c.Name).ToList();
         var indexes = keyNames
@@ -251,9 +251,13 @@ public sealed class MonitorCheckService(
     }
 
     /// <summary>Reads both coordinates of a row. False (never an exception) when either one is NULL, unusable or out of range.</summary>
-    private static bool TryReadCoordinates(object?[] row, int latitudeIndex, int longitudeIndex, out double latitude, out double longitude) =>
-        TryParseCoordinate(row[latitudeIndex], isLatitude: true, out latitude)
-        && TryParseCoordinate(row[longitudeIndex], isLatitude: false, out longitude);
+    private static bool TryReadCoordinates(object?[] row, int latitudeIndex, int longitudeIndex, out double latitude, out double longitude)
+    {
+        // Both are always parsed (no short-circuit), so both out parameters are assigned on every path.
+        var latitudeOk = TryParseCoordinate(row[latitudeIndex], isLatitude: true, out latitude);
+        var longitudeOk = TryParseCoordinate(row[longitudeIndex], isLatitude: false, out longitude);
+        return latitudeOk && longitudeOk;
+    }
 
     private static bool TryParseCoordinate(object? value, bool isLatitude, out double parsed)
     {
